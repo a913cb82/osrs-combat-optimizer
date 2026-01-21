@@ -35,6 +35,8 @@ python3 optimize_melee.py --help
 | Argument | Description | Default |
 | :--- | :--- | :--- |
 | `--goal` | Target level for both Attack and Strength. | `40` |
+| `--start_atk` | Starting Attack level. | `1` |
+| `--start_str` | Starting Strength level. | `1` |
 | `--costs` | Custom acquisition costs for specific items (format `name:time`). | None (default 30s) |
 | `--lookahead` | Number of levels to look ahead for value estimation. | `100` |
 | `--timeout` | Max execution time in seconds. | `300` |
