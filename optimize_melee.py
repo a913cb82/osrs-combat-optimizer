@@ -71,7 +71,7 @@ def get_dps_raw(name, data, atk_lvl, str_lvl, style, amulet_stats):
         hc = calculate_hit_chance(atk_lvl, attack_bonus + amulet_stats['acc'], 0) 
     return (0.5 * mh * hc) / data['speed']
 
-def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, timeout=300, lookahead=100):
+def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, start_str=1, timeout=300, lookahead=100):
     start_time_real = time.time()
     
     active_ammys = {}
@@ -95,16 +95,21 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
     dps_cache = {c: {'accurate': {}, 'aggressive': {}} for c in combos}
     prefix_time = {c: {'accurate': {}, 'aggressive': {}} for c in combos}
     
+    # Pre-calc needs to cover up to max(goal_atk, goal_str) + lookahead?
+    # Max possible level is 100 or higher? Let's cap at 100 for tables to be safe, 
+    # but ensure coverage.
+    max_table_lvl = 100
+    
     for w_name, a_name in combos:
         w_data = allowed_data[w_name]
         a_data = active_ammys[a_name]
         for style in ['accurate', 'aggressive']:
             grid = {}
             if style == 'accurate':
-                for s in range(1, 101):
+                for s in range(1, max_table_lvl + 1):
                     cum = 0.0
-                    grid[s] = [0.0] * 102
-                    for a in range(1, 101):
+                    grid[s] = [0.0] * (max_table_lvl + 2)
+                    for a in range(1, max_table_lvl + 1):
                         if a not in dps_cache[(w_name, a_name)][style]:
                             dps_cache[(w_name, a_name)][style][a] = {}
                         d = get_dps_raw(w_name, w_data, a, s, style, a_data)
@@ -115,12 +120,12 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
                         grid[s][a+1] = cum
                 prefix_time[(w_name, a_name)]['accurate'] = grid
             else:
-                for a in range(1, 101):
+                for a in range(1, max_table_lvl + 1):
                     cum = 0.0
-                    grid[a] = [0.0] * 102
+                    grid[a] = [0.0] * (max_table_lvl + 2)
                     if a not in dps_cache[(w_name, a_name)][style]:
                         dps_cache[(w_name, a_name)][style][a] = {}
-                    for s in range(1, 101):
+                    for s in range(1, max_table_lvl + 1):
                         d = get_dps_raw(w_name, w_data, a, s, style, a_data)
                         dps_cache[(w_name, a_name)][style][a][s] = d
                         step_time = float('inf')
@@ -131,46 +136,69 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
 
     best_dps_at_level = {'accurate': {}, 'aggressive': {}}
     for style in ['accurate', 'aggressive']:
-        for a in range(1, 101):
+        for a in range(1, max_table_lvl + 1):
             best_dps_at_level[style][a] = {}
-            for s in range(1, 101):
+            for s in range(1, max_table_lvl + 1):
                 best_val = 0.0
                 for c in combos:
                     d = dps_cache[c][style][a][s]
                     if d > best_val: best_val = d
                 best_dps_at_level[style][a][s] = best_val
 
+    # H Table needs to handle separate goals
     h_table = {}
-    for a in range(goal_lvl, 0, -1):
+    
+    # We iterate BACKWARDS from (goal_atk, goal_str)
+    # Range should cover start_atk...goal_atk
+    for a in range(goal_atk, 0, -1):
         h_table[a] = {}
-        for s in range(goal_lvl, 0, -1):
-            if a == goal_lvl and s == goal_lvl:
+        for s in range(goal_str, 0, -1):
+            if a == goal_atk and s == goal_str:
                 h_table[a][s] = 0.0
             else:
                 opt_atk, opt_str = float('inf'), float('inf')
-                if a < goal_lvl:
+                if a < goal_atk:
                     d = best_dps_at_level['accurate'][a][s]
                     cost_step = (XP_TABLE[a+1] - XP_TABLE[a]) / XP_PER_DAMAGE / d if d > 0 else float('inf')
-                    opt_atk = cost_step + h_table[a+1][s]
-                if s < goal_lvl:
+                    # Look up h for next atk level. If s > goal_str, this path is invalid? 
+                    # No, s stays constant. We check h[a+1][s]
+                    # Note: We must ensure h[a+1][s] exists. 
+                    # Loop structure: outer 'a' desc, inner 's' desc.
+                    # When computing h[a][s], h[a+1][s] might not be computed if we strictly follow loop order?
+                    # Wait. If 'a' goes goal->1.
+                    # h[goal][s] is computed first.
+                    # So h[a+1][s] is available (since a+1 > a).
+                    # What about h[a][s+1]?
+                    # inner loop 's' goes goal->1.
+                    # h[a][s+1] is available (since s+1 > s).
+                    # So DP order is correct.
+                    if s <= goal_str: # Valid s
+                         # Handle edge case where we might need h for 's' outside range if we overshoot?
+                         # No, we only step towards goal.
+                         prev_h = h_table.get(a+1, {}).get(s, float('inf'))
+                         opt_atk = cost_step + prev_h
+                
+                if s < goal_str:
                     d = best_dps_at_level['aggressive'][a][s]
                     cost_step = (XP_TABLE[s+1] - XP_TABLE[s]) / XP_PER_DAMAGE / d if d > 0 else float('inf')
-                    opt_str = cost_step + h_table[a][s+1]
+                    prev_h = h_table.get(a, {}).get(s+1, float('inf'))
+                    opt_str = cost_step + prev_h
+                    
                 h_table[a][s] = min(opt_atk, opt_str)
 
     def get_window_score_fast(w_name, a_name, style, atk, stri):
         limit = max(1, lookahead)
         if style == 'accurate':
-            end_lvl = min(goal_lvl, atk + limit)
+            end_lvl = min(goal_atk, atk + limit)
             p_arr = prefix_time[(w_name, a_name)]['accurate'][stri]
             return p_arr[end_lvl] - p_arr[atk]
         else:
-            end_lvl = min(goal_lvl, stri + limit)
+            end_lvl = min(goal_str, stri + limit)
             p_arr = prefix_time[(w_name, a_name)]['aggressive'][atk]
             return p_arr[end_lvl] - p_arr[stri]
 
     avail_by_atk = {}
-    for lvl in range(1, 101):
+    for lvl in range(1, max_table_lvl + 1):
         raw_avail = [n for n, d in allowed_data.items() if lvl >= d['atk_req']]
         cands = []
         for name in raw_avail:
@@ -197,7 +225,7 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
     visited = {} 
     final_state = None
 
-    print(f"Searching from {start_atk}/{start_str} to {goal_lvl}/{goal_lvl}...")
+    print(f"Searching from {start_atk}/{start_str} to {goal_atk}/{goal_str}...")
     while pq:
         if time.time() - start_time_real > timeout:
             print(f"Timeout reached ({timeout}s)!"); return None
@@ -206,11 +234,11 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
         state_key = (atk, stri, owned_w, owned_a, unlocked_g)
         if state_key in visited and visited[state_key] <= curr_time: continue
         visited[state_key] = curr_time
-        if atk == goal_lvl and stri == goal_lvl:
+        if atk == goal_atk and stri == goal_str:
             final_state = (curr_time, path); break
             
         for skill_train in ['Atk', 'Str']:
-            if (skill_train == 'Atk' and atk >= goal_lvl) or (skill_train == 'Str' and stri >= goal_lvl): continue
+            if (skill_train == 'Atk' and atk >= goal_atk) or (skill_train == 'Str' and stri >= goal_str): continue
             style = 'accurate' if skill_train == 'Atk' else 'aggressive'
             
             candidates = []
@@ -237,15 +265,9 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
             selected = []
             if candidates: selected.append(candidates[0])
             
-            # Pruning strategy:
-            # Only add a backup "Zero Cost" option if the best option HAS a cost.
-            # indices: 5=w_cost, 6=a_cost.
-            if candidates[0][5] > 0 or candidates[0][6] > 0:
-                for c in candidates:
-                    if len(selected) >= 2: break
-                    if c[5] == 0 and c[6] == 0 and c not in selected:
-                        selected.append(c)
-                        break
+            for c in candidates:
+                if len(selected) >= 2: break
+                if c[5] == 0 and c[6] == 0 and c not in selected: selected.append(c)
             
             for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grp in selected:
                 dps = -neg_dps
@@ -285,7 +307,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OSRS F2P Melee Optimizer")
     parser.add_argument("--costs", nargs='+', default=[], help="List of costs (weapon:time or ammy:time)")
     parser.add_argument("--shared_costs", nargs='+', default=[], help="Shared costs (item1,item2:time)")
-    parser.add_argument("--goal", type=int, default=40, help="Target level")
+    
+    # Goals
+    parser.add_argument("--goal", type=int, default=40, help="Default goal for both skills")
+    parser.add_argument("--goal_atk", type=int, help="Target Attack level")
+    parser.add_argument("--goal_str", type=int, help="Target Strength level")
+    
     parser.add_argument("--start_atk", type=int, default=1, help="Starting Attack level")
     parser.add_argument("--start_str", type=int, default=1, help="Starting Strength level")
     parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
@@ -300,8 +327,12 @@ if __name__ == "__main__":
             cost = parse_time(time_str)
             for n in names_str.split(','): shared_map[n.strip().lower()] = {'id': i, 'cost': cost}
 
-    print(f"Optimizing for Goal: {args.goal}/{args.goal}, Start: {args.start_atk}/{args.start_str}, Lookahead: {args.lookahead}")
-    result = solve(costs_map, shared_map, args.goal, args.start_atk, args.start_str, args.timeout, args.lookahead)
+    # Resolve Goals
+    g_atk = args.goal_atk if args.goal_atk else args.goal
+    g_str = args.goal_str if args.goal_str else args.goal
+
+    print(f"Optimizing for Goal: {g_atk}/{g_str}, Start: {args.start_atk}/{args.start_str}, Lookahead: {args.lookahead}")
+    result = solve(costs_map, shared_map, g_atk, g_str, args.start_atk, args.start_str, args.timeout, args.lookahead)
     
     if result:
         total_seconds, path = result

@@ -34,7 +34,9 @@ python3 optimize_melee.py --help
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
-| `--goal` | Target level for both Attack and Strength. | `40` |
+| `--goal` | Default goal for both skills. | `40` |
+| `--goal_atk` | Specific target for Attack level. | `None` (uses goal) |
+| `--goal_str` | Specific target for Strength level. | `None` (uses goal) |
 | `--start_atk` | Starting Attack level. | `1` |
 | `--start_str` | Starting Strength level. | `1` |
 | `--costs` | Custom acquisition costs for specific items (format `name:time`). | None (default 30s) |
@@ -83,6 +85,15 @@ python3 optimize_melee.py \
   --costs "rune scimitar:22h" "rune sword:5h"
 ```
 *(Spoiler: Yes, it saves ~2 hours total. If it takes >24 hours, it's a net loss.)*
+
+### 5. Separate Skill Goals
+Optimizes for a specific build, like 40 Attack / 99 Strength (F2P Pure).
+
+```bash
+python3 optimize_melee.py \
+  --goal_atk 40 --goal_str 99 \
+  --costs "rune scimitar:22h"
+```
 
 ---
 
