@@ -21,13 +21,13 @@ cd osrs_dps
 
 ## Usage
 
-Run the optimizer using `python3 new_optimize_leveling.py`.
+Run the optimizer using `python3 optimize_melee.py`.
 
 The tool automatically considers **all** F2P weapons and amulets. To exclude an item (or make it "expensive" to acquire), use the `--costs` argument.
 
 For a full list of available arguments and their defaults, run:
 ```bash
-python3 new_optimize_leveling.py --help
+python3 optimize_melee.py --help
 ```
 
 ### Key Arguments
@@ -57,7 +57,7 @@ Optimizes for 99/99, accounting for the massive grind to craft and enchant high-
 *   **Rune Sword:** ~5h (Champions' Guild) -> Primary weapon.
 
 ```bash
-python3 new_optimize_leveling.py \
+python3 optimize_melee.py \
   --goal 99 \
   --costs "rune scimitar:1300h" "adamant scimitar:100h" "rune sword:5h" "barronite mace:9h" \
           "power:110h" "str:15h" "accuracy:1h"
@@ -67,14 +67,14 @@ python3 new_optimize_leveling.py \
 Assumes you can buy any item instantly from the Grand Exchange (default cost ~30s). No cost overrides needed.
 
 ```bash
-python3 new_optimize_leveling.py --goal 99
+python3 optimize_melee.py --goal 99
 ```
 
 ### 3. Is the Rune Scimitar Worth It?
 If you have a method to get a Rune Scimitar in **22 hours**, is it worth the grind over just using a Rune Sword?
 
 ```bash
-python3 new_optimize_leveling.py \
+python3 optimize_melee.py \
   --goal 99 \
   --costs "rune scimitar:22h" "rune sword:5h"
 ```

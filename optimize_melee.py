@@ -2,7 +2,7 @@ import math
 import heapq
 import argparse
 import time
-from weapon_db import WEAPON_DB
+from data import WEAPON_DB
 
 # --- Constants & Data ---
 
