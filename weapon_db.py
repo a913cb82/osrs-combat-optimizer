@@ -1,71 +1,145 @@
-WEAPON_DB = {
+# Weapon Database Generator
+
+# --- Base Weapon Stats (Attack Speed & Relative Bonuses) ---
+# Speed: Seconds per attack (ticks * 0.6)
+# Bonuses are placeholders to be scaled by material tier.
+# Specific values will be mapped per OSRS Wiki standards.
+
+WEAPON_TYPES = {
+    "dagger":     {"speed": 2.4, "type_bonus": {"stab": 4, "slash": 2, "crush": -4}, "str_scale": 0.8},
+    "sword":      {"speed": 2.4, "type_bonus": {"stab": 4, "slash": 3, "crush": -2}, "str_scale": 1.0},
+    "scimitar":   {"speed": 2.4, "type_bonus": {"stab": 1, "slash": 7, "crush": -2}, "str_scale": 1.1}, # Scims have high str
+    "longsword":  {"speed": 3.0, "type_bonus": {"stab": 4, "slash": 5, "crush": -2}, "str_scale": 1.2},
+    "mace":       {"speed": 2.4, "type_bonus": {"stab": 1, "slash": -2, "crush": 6}, "str_scale": 0.9},
+    "battleaxe":  {"speed": 3.6, "type_bonus": {"stab": -2, "slash": 6, "crush": 3}, "str_scale": 1.6}, # High str, slow
+    "warhammer":  {"speed": 3.6, "type_bonus": {"stab": -4, "slash": -4, "crush": 10}, "str_scale": 1.6},
+    "2h sword":   {"speed": 4.2, "type_bonus": {"stab": -4, "slash": 9, "crush": 8}, "str_scale": 1.8},
+}
+
+# --- Material Tiers (Level Req & Stat Multipliers) ---
+# These specific values are hardcoded to match OSRS exact stats for key weapons
+# rather than purely formulaic, to ensure accuracy for the optimizer.
+
+MATERIALS = {
+    "bronze":   {"req": 1,  "offset": 0},
+    "iron":     {"req": 1,  "offset": 1}, # Approx +1-4 over bronze
+    "steel":    {"req": 5,  "offset": 2},
+    "black":    {"req": 10, "offset": 3},
+    "mithril":  {"req": 20, "offset": 4},
+    "adamant":  {"req": 30, "offset": 5},
+    "rune":     {"req": 40, "offset": 6},
+}
+
+# --- Exact Stats Overrides (Source of Truth) ---
+# Format: "material weapon": (Stab, Slash, Crush, Str)
+# We fill the DB with these precise values.
+
+EXACT_STATS = {
     # Bronze
-    "bronze dagger":     {"atk_req": 1, "bonus": {"stab": 4, "slash": 2, "crush": -4}, "str": 3, "speed": 2.4, "cost": 30.0},
-    "bronze sword":      {"atk_req": 1, "bonus": {"stab": 4, "slash": 3, "crush": -2}, "str": 5, "speed": 2.4, "cost": 30.0},
-    "bronze scimitar":   {"atk_req": 1, "bonus": {"stab": 1, "slash": 7, "crush": -2}, "str": 6, "speed": 2.4, "cost": 30.0},
-    "bronze longsword":  {"atk_req": 1, "bonus": {"stab": 4, "slash": 5, "crush": -2}, "str": 7, "speed": 3.0, "cost": 30.0},
-    "bronze mace":       {"atk_req": 1, "bonus": {"stab": 1, "slash": -2, "crush": 6}, "str": 5, "speed": 2.4, "cost": 30.0},
-    "bronze battleaxe":  {"atk_req": 1, "bonus": {"stab": -2, "slash": 6, "crush": 3}, "str": 9, "speed": 3.6, "cost": 30.0},
-    "bronze warhammer":  {"atk_req": 1, "bonus": {"stab": -4, "slash": -4, "crush": 10}, "str": 10, "speed": 3.6, "cost": 30.0},
-    "bronze 2h sword":   {"atk_req": 1, "bonus": {"stab": -4, "slash": 9, "crush": 8}, "str": 10, "speed": 4.2, "cost": 30.0},
+    "bronze dagger":     (4, 2, -4, 3),
+    "bronze sword":      (4, 3, -2, 5),
+    "bronze scimitar":   (1, 7, -2, 6),
+    "bronze longsword":  (4, 5, -2, 7),
+    "bronze mace":       (1, -2, 6, 5),
+    "bronze battleaxe":  (-2, 6, 3, 9),
+    "bronze warhammer":  (-4, -4, 10, 10),
+    "bronze 2h sword":   (-4, 9, 8, 10),
 
     # Iron
-    "iron dagger":       {"atk_req": 1, "bonus": {"stab": 5, "slash": 3, "crush": -4}, "str": 4, "speed": 2.4, "cost": 30.0},
-    "iron sword":        {"atk_req": 1, "bonus": {"stab": 6, "slash": 4, "crush": -2}, "str": 7, "speed": 2.4, "cost": 30.0},
-    "iron scimitar":     {"atk_req": 1, "bonus": {"stab": 2, "slash": 10, "crush": -2}, "str": 9, "speed": 2.4, "cost": 30.0},
-    "iron longsword":    {"atk_req": 1, "bonus": {"stab": 6, "slash": 8, "crush": -2}, "str": 10, "speed": 3.0, "cost": 30.0},
-    "iron mace":         {"atk_req": 1, "bonus": {"stab": 4, "slash": -2, "crush": 9}, "str": 7, "speed": 2.4, "cost": 30.0},
-    "iron battleaxe":    {"atk_req": 1, "bonus": {"stab": -2, "slash": 8, "crush": 5}, "str": 13, "speed": 3.6, "cost": 30.0},
-    "iron warhammer":    {"atk_req": 1, "bonus": {"stab": -4, "slash": -4, "crush": 11}, "str": 11, "speed": 3.6, "cost": 30.0},
-    "iron 2h sword":     {"atk_req": 1, "bonus": {"stab": -4, "slash": 14, "crush": 12}, "str": 15, "speed": 4.2, "cost": 30.0},
+    "iron dagger":       (5, 3, -4, 4),
+    "iron sword":        (6, 4, -2, 7),
+    "iron scimitar":     (2, 10, -2, 9),
+    "iron longsword":    (6, 8, -2, 10),
+    "iron mace":         (4, -2, 9, 7),
+    "iron battleaxe":    (-2, 8, 5, 13),
+    "iron warhammer":    (-4, -4, 11, 11),
+    "iron 2h sword":     (-4, 14, 12, 15),
 
     # Steel
-    "steel dagger":      {"atk_req": 5, "bonus": {"stab": 8, "slash": 4, "crush": -4}, "str": 7, "speed": 2.4, "cost": 30.0},
-    "steel sword":       {"atk_req": 5, "bonus": {"stab": 11, "slash": 8, "crush": -2}, "str": 12, "speed": 2.4, "cost": 30.0},
-    "steel scimitar":    {"atk_req": 5, "bonus": {"stab": 3, "slash": 15, "crush": -2}, "str": 14, "speed": 2.4, "cost": 30.0},
-    "steel longsword":   {"atk_req": 5, "bonus": {"stab": 9, "slash": 14, "crush": -2}, "str": 16, "speed": 3.0, "cost": 30.0},
-    "steel mace":        {"atk_req": 5, "bonus": {"stab": 7, "slash": -2, "crush": 13}, "str": 11, "speed": 2.4, "cost": 30.0},
-    "steel battleaxe":   {"atk_req": 5, "bonus": {"stab": -2, "slash": 16, "crush": 11}, "str": 20, "speed": 3.6, "cost": 30.0},
-    "steel warhammer":   {"atk_req": 5, "bonus": {"stab": -4, "slash": -4, "crush": 18}, "str": 16, "speed": 3.6, "cost": 30.0},
-    "steel 2h sword":    {"atk_req": 5, "bonus": {"stab": -4, "slash": 21, "crush": 18}, "str": 22, "speed": 4.2, "cost": 30.0},
+    "steel dagger":      (8, 4, -4, 7),
+    "steel sword":       (11, 8, -2, 12),
+    "steel scimitar":    (3, 15, -2, 14),
+    "steel longsword":   (9, 14, -2, 16),
+    "steel mace":        (7, -2, 13, 11),
+    "steel battleaxe":   (-2, 16, 11, 20),
+    "steel warhammer":   (-4, -4, 18, 16),
+    "steel 2h sword":    (-4, 21, 18, 22),
 
     # Black
-    "black dagger":      {"atk_req": 10, "bonus": {"stab": 10, "slash": 5, "crush": -4}, "str": 7, "speed": 2.4, "cost": 30.0},
-    "black sword":       {"atk_req": 10, "bonus": {"stab": 14, "slash": 10, "crush": -2}, "str": 12, "speed": 2.4, "cost": 30.0},
-    "black scimitar":    {"atk_req": 10, "bonus": {"stab": 4, "slash": 19, "crush": -2}, "str": 14, "speed": 2.4, "cost": 30.0},
-    "black longsword":   {"atk_req": 10, "bonus": {"stab": 13, "slash": 18, "crush": -2}, "str": 16, "speed": 3.0, "cost": 30.0},
-    "black mace":        {"atk_req": 10, "bonus": {"stab": 8, "slash": -2, "crush": 16}, "str": 13, "speed": 2.4, "cost": 30.0},
-    "black battleaxe":   {"atk_req": 10, "bonus": {"stab": -2, "slash": 20, "crush": 15}, "str": 24, "speed": 3.6, "cost": 30.0},
-    "black warhammer":   {"atk_req": 10, "bonus": {"stab": -4, "slash": -4, "crush": 22}, "str": 22, "speed": 3.6, "cost": 30.0},
-    "black 2h sword":    {"atk_req": 10, "bonus": {"stab": -4, "slash": 26, "crush": 22}, "str": 26, "speed": 4.2, "cost": 30.0},
+    "black dagger":      (10, 5, -4, 7),
+    "black sword":       (14, 10, -2, 12),
+    "black scimitar":    (4, 19, -2, 14),
+    "black longsword":   (13, 18, -2, 16),
+    "black mace":        (8, -2, 16, 13),
+    "black battleaxe":   (-2, 20, 15, 24),
+    "black warhammer":   (-4, -4, 22, 22),
+    "black 2h sword":    (-4, 26, 22, 26),
 
     # Mithril
-    "mithril dagger":    {"atk_req": 20, "bonus": {"stab": 11, "slash": 5, "crush": -4}, "str": 10, "speed": 2.4, "cost": 30.0},
-    "mithril sword":     {"atk_req": 20, "bonus": {"stab": 16, "slash": 11, "crush": -2}, "str": 17, "speed": 2.4, "cost": 30.0},
-    "mithril scimitar":  {"atk_req": 20, "bonus": {"stab": 5, "slash": 21, "crush": -2}, "str": 20, "speed": 2.4, "cost": 30.0},
-    "mithril longsword": {"atk_req": 20, "bonus": {"stab": 15, "slash": 20, "crush": -2}, "str": 22, "speed": 3.0, "cost": 30.0},
-    "mithril mace":      {"atk_req": 20, "bonus": {"stab": 11, "slash": -2, "crush": 18}, "str": 16, "speed": 2.4, "cost": 30.0},
-    "mithril battleaxe": {"atk_req": 20, "bonus": {"stab": -2, "slash": 22, "crush": 17}, "str": 29, "speed": 3.6, "cost": 30.0},
-    "mithril warhammer": {"atk_req": 20, "bonus": {"stab": -4, "slash": -4, "crush": 25}, "str": 27, "speed": 3.6, "cost": 30.0},
-    "mithril 2h sword":  {"atk_req": 20, "bonus": {"stab": -4, "slash": 32, "crush": 26}, "str": 33, "speed": 4.2, "cost": 30.0},
+    "mithril dagger":    (11, 5, -4, 10),
+    "mithril sword":     (16, 11, -2, 17),
+    "mithril scimitar":  (5, 21, -2, 20),
+    "mithril longsword": (15, 20, -2, 22),
+    "mithril mace":      (11, -2, 18, 16),
+    "mithril battleaxe": (-2, 22, 17, 29),
+    "mithril warhammer": (-4, -4, 25, 27),
+    "mithril 2h sword":  (-4, 32, 26, 33),
 
     # Adamant
-    "adamant dagger":    {"atk_req": 30, "bonus": {"stab": 15, "slash": 8, "crush": -4}, "str": 14, "speed": 2.4, "cost": 30.0},
-    "adamant sword":     {"atk_req": 30, "bonus": {"stab": 23, "slash": 18, "crush": -2}, "str": 24, "speed": 2.4, "cost": 30.0},
-    "adamant scimitar":  {"atk_req": 30, "bonus": {"stab": 6, "slash": 29, "crush": -2}, "str": 28, "speed": 2.4, "cost": 30.0},
-    "adamant longsword": {"atk_req": 30, "bonus": {"stab": 20, "slash": 29, "crush": -2}, "str": 31, "speed": 3.0, "cost": 30.0},
-    "adamant mace":      {"atk_req": 30, "bonus": {"stab": 13, "slash": -2, "crush": 25}, "str": 23, "speed": 2.4, "cost": 30.0},
-    "adamant battleaxe": {"atk_req": 30, "bonus": {"stab": -2, "slash": 31, "crush": 26}, "str": 41, "speed": 3.6, "cost": 30.0},
-    "adamant warhammer": {"atk_req": 30, "bonus": {"stab": -4, "slash": -4, "crush": 35}, "str": 39, "speed": 3.6, "cost": 30.0},
-    "adamant 2h sword":  {"atk_req": 30, "bonus": {"stab": -4, "slash": 43, "crush": 35}, "str": 44, "speed": 4.2, "cost": 30.0},
+    "adamant dagger":    (15, 8, -4, 14),
+    "adamant sword":     (23, 18, -2, 24),
+    "adamant scimitar":  (6, 29, -2, 28),
+    "adamant longsword": (20, 29, -2, 31),
+    "adamant mace":      (13, -2, 25, 23),
+    "adamant battleaxe": (-2, 31, 26, 41),
+    "adamant warhammer": (-4, -4, 35, 39),
+    "adamant 2h sword":  (-4, 43, 35, 44),
 
     # Rune
-    "rune dagger":       {"atk_req": 40, "bonus": {"stab": 25, "slash": 12, "crush": -4}, "str": 24, "speed": 2.4, "cost": 30.0},
-    "rune sword":        {"atk_req": 40, "bonus": {"stab": 38, "slash": 26, "crush": -2}, "str": 39, "speed": 2.4, "cost": 30.0},
-    "rune scimitar":     {"atk_req": 40, "bonus": {"stab": 7, "slash": 45, "crush": -2}, "str": 44, "speed": 2.4, "cost": 30.0},
-    "rune longsword":    {"atk_req": 40, "bonus": {"stab": 38, "slash": 47, "crush": -2}, "str": 49, "speed": 3.0, "cost": 30.0},
-    "rune mace":         {"atk_req": 40, "bonus": {"stab": 20, "slash": -2, "crush": 39}, "str": 36, "speed": 2.4, "cost": 30.0},
-    "rune battleaxe":    {"atk_req": 40, "bonus": {"stab": -2, "slash": 48, "crush": 43}, "str": 64, "speed": 3.6, "cost": 30.0},
-    "rune warhammer":    {"atk_req": 40, "bonus": {"stab": -4, "slash": -4, "crush": 53}, "str": 53, "speed": 3.6, "cost": 30.0},
-    "rune 2h sword":     {"atk_req": 40, "bonus": {"stab": -4, "slash": 69, "crush": 50}, "str": 70, "speed": 4.2, "cost": 30.0},
+    "rune dagger":       (25, 12, -4, 24),
+    "rune sword":        (38, 26, -2, 39),
+    "rune scimitar":     (7, 45, -2, 44),
+    "rune longsword":    (38, 47, -2, 49),
+    "rune mace":         (20, -2, 39, 36),
+    "rune battleaxe":    (-2, 48, 43, 64),
+    "rune warhammer":    (-4, -4, 53, 53),
+    "rune 2h sword":     (-4, 69, 50, 70),
+    
+    # Special
+    "barronite mace":    (0, 0, 40, 40), # Special stats
 }
+
+# --- Database Generation ---
+
+WEAPON_DB = {}
+
+for name, stats in EXACT_STATS.items():
+    # Identify type and material from name
+    parts = name.split()
+    # Handle "2h sword"
+    if "2h" in name:
+        w_type = "2h sword"
+        material = parts[0]
+    elif "barronite" in name:
+        w_type = "mace" # Treated as mace for speed
+        material = "rune" # Atk req 40
+    else:
+        w_type = parts[-1]
+        material = parts[0]
+        
+    # Get Metadata
+    type_data = WEAPON_TYPES.get(w_type, {"speed": 2.4}) # Default speed
+    mat_data = MATERIALS.get(material, {"req": 1})
+    if "barronite" in name: mat_data = {"req": 40}
+    
+    WEAPON_DB[name] = {
+        "atk_req": mat_data["req"],
+        "bonus": {
+            "stab": stats[0],
+            "slash": stats[1],
+            "crush": stats[2]
+        },
+        "str": stats[3],
+        "speed": type_data["speed"],
+        "cost": 30.0 # Default cost
+    }

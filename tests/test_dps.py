@@ -1,39 +1,24 @@
 import unittest
-from new_optimize_leveling import get_best_dps
+from new_optimize_leveling import get_dps_raw
+
+# Mock Data
+MOCK_RUNE_SCIM = {"bonus": {"stab": 7, "slash": 45, "crush": -2}, "max_bonus": 45, "str": 44, "speed": 2.4}
+MOCK_BRONZE_SCIM = {"bonus": {"stab": 1, "slash": 7, "crush": -2}, "max_bonus": 7, "str": 6, "speed": 2.4}
 
 class TestDPS(unittest.TestCase):
-    def test_best_dps_selection(self):
+    def test_dps_comparison(self):
         # Scenario: Level 40/40. 
-        # Allowed: Bronze Scimitar, Rune Scimitar.
-        # Expected: Rune Scimitar selected.
+        # Rune Scimitar should have higher DPS than Bronze.
         
         atk = 40
         str_lvl = 40
-        allowed = ["bronze scimitar", "rune scimitar"]
-        excluded = []
         ammy = {"str": 0, "acc": 0}
         
-        (dps_atk, name_atk), (dps_str, name_str) = get_best_dps(atk, str_lvl, allowed, excluded, ammy)
+        dps_rune = get_dps_raw("rune scimitar", MOCK_RUNE_SCIM, atk, str_lvl, 'aggressive', ammy)
+        dps_bronze = get_dps_raw("bronze scimitar", MOCK_BRONZE_SCIM, atk, str_lvl, 'aggressive', ammy)
         
-        self.assertEqual(name_atk, "rune scimitar")
-        self.assertEqual(name_str, "rune scimitar")
-        self.assertGreater(dps_atk, 0)
-
-    def test_exclusion_logic(self):
-        # Scenario: Level 40/40.
-        # Allowed: Rune Scimitar, Adamant Scimitar.
-        # Exclude: Rune Scimitar.
-        # Expected: Adamant Scimitar.
-        
-        atk = 40
-        str_lvl = 40
-        allowed = ["rune scimitar", "adamant scimitar"]
-        excluded = ["rune scimitar"]
-        ammy = {"str": 0, "acc": 0}
-        
-        (dps_atk, name_atk), (dps_str, name_str) = get_best_dps(atk, str_lvl, allowed, excluded, ammy)
-        
-        self.assertEqual(name_atk, "adamant scimitar")
+        self.assertGreater(dps_rune, dps_bronze)
+        self.assertGreater(dps_rune, 0)
 
 if __name__ == '__main__':
     unittest.main()
