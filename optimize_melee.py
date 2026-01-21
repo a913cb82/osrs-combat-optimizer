@@ -221,7 +221,14 @@ def solve(req_graph, goal_atk, goal_str, start_atk=1, start_str=1, timeout=300, 
                 d1 = dps_cache[(name, a_name)]['accurate'][lvl][lvl]
                 d2 = dps_cache[(name, a_name)]['aggressive'][lvl][lvl]
                 max_d = max(max_d, d1, d2)
-            cands.append((max_d, allowed_data[name]['base_cost'], name))
+            
+            # Use FULL cost (Base + Graph) for pruning to avoid dropping items 
+            # that are cheap but have lower DPS than an expensive item.
+            graph_cost, _ = req_graph.get_unlock_cost(name, frozenset())
+            total_est_cost = allowed_data[name]['base_cost'] + graph_cost
+            
+            cands.append((max_d, total_est_cost, name))
+        
         cands.sort(key=lambda x: x[0], reverse=True)
         keep = []
         min_cost = float('inf')
