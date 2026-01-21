@@ -95,9 +95,6 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
     dps_cache = {c: {'accurate': {}, 'aggressive': {}} for c in combos}
     prefix_time = {c: {'accurate': {}, 'aggressive': {}} for c in combos}
     
-    # Pre-calc needs to cover up to max(goal_atk, goal_str) + lookahead?
-    # Max possible level is 100 or higher? Let's cap at 100 for tables to be safe, 
-    # but ensure coverage.
     max_table_lvl = 100
     
     for w_name, a_name in combos:
@@ -145,11 +142,7 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                     if d > best_val: best_val = d
                 best_dps_at_level[style][a][s] = best_val
 
-    # H Table needs to handle separate goals
     h_table = {}
-    
-    # We iterate BACKWARDS from (goal_atk, goal_str)
-    # Range should cover start_atk...goal_atk
     for a in range(goal_atk, 0, -1):
         h_table[a] = {}
         for s in range(goal_str, 0, -1):
@@ -160,30 +153,11 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                 if a < goal_atk:
                     d = best_dps_at_level['accurate'][a][s]
                     cost_step = (XP_TABLE[a+1] - XP_TABLE[a]) / XP_PER_DAMAGE / d if d > 0 else float('inf')
-                    # Look up h for next atk level. If s > goal_str, this path is invalid? 
-                    # No, s stays constant. We check h[a+1][s]
-                    # Note: We must ensure h[a+1][s] exists. 
-                    # Loop structure: outer 'a' desc, inner 's' desc.
-                    # When computing h[a][s], h[a+1][s] might not be computed if we strictly follow loop order?
-                    # Wait. If 'a' goes goal->1.
-                    # h[goal][s] is computed first.
-                    # So h[a+1][s] is available (since a+1 > a).
-                    # What about h[a][s+1]?
-                    # inner loop 's' goes goal->1.
-                    # h[a][s+1] is available (since s+1 > s).
-                    # So DP order is correct.
-                    if s <= goal_str: # Valid s
-                         # Handle edge case where we might need h for 's' outside range if we overshoot?
-                         # No, we only step towards goal.
-                         prev_h = h_table.get(a+1, {}).get(s, float('inf'))
-                         opt_atk = cost_step + prev_h
-                
+                    opt_atk = cost_step + h_table.get(a+1, {}).get(s, float('inf'))
                 if s < goal_str:
                     d = best_dps_at_level['aggressive'][a][s]
                     cost_step = (XP_TABLE[s+1] - XP_TABLE[s]) / XP_PER_DAMAGE / d if d > 0 else float('inf')
-                    prev_h = h_table.get(a, {}).get(s+1, float('inf'))
-                    opt_str = cost_step + prev_h
-                    
+                    opt_str = cost_step + h_table.get(a, {}).get(s+1, float('inf'))
                 h_table[a][s] = min(opt_atk, opt_str)
 
     def get_window_score_fast(w_name, a_name, style, atk, stri):
@@ -245,21 +219,45 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
             
             for w_name in avail_by_atk[atk]:
                 w_cost = 0.0
-                pending_group = None
+                pending_groups = []
+                
                 if w_name not in owned_w:
                     w_cost = allowed_data[w_name]['base_cost']
-                    grp = shared_costs_map.get(w_name)
-                    if grp and grp['id'] not in unlocked_g:
-                        w_cost += grp['cost']
-                        pending_group = grp['id']
+                    
+                    # Check ALL shared groups for this weapon
+                    groups = shared_costs_map.get(w_name, [])
+                    for grp in groups:
+                        if grp['id'] not in unlocked_g:
+                            w_cost += grp['cost']
+                            pending_groups.append(grp['id'])
                 
+                # Amulet Logic
                 for a_name in active_ammys:
-                    a_cost = 0.0 if a_name in owned_a else active_ammys[a_name]['base_cost']
+                    a_cost = 0.0
+                    pending_a_groups = []
+                    
+                    if a_name not in owned_a:
+                        a_cost = active_ammys[a_name]['base_cost']
+                        # Check shared groups for amulet (if we tracked them, currently we don't pass ammys to shared_map)
+                        # We could easily enable it by checking shared_map.get(a_name)
+                        grps = shared_costs_map.get(a_name, [])
+                        for grp in grps:
+                            if grp['id'] not in unlocked_g:
+                                # Avoid double counting if weapon unlocks same group?
+                                # If pending_groups already has it, we shouldn't add cost again.
+                                if grp['id'] not in pending_groups:
+                                    a_cost += grp['cost']
+                                    pending_a_groups.append(grp['id'])
+
                     score = get_window_score_fast(w_name, a_name, style, atk, stri) + w_cost + a_cost
                     curr_dps = dps_cache[(w_name, a_name)][style][atk][stri]
                     
                     prio = AMULET_PRIORITY.get(a_name, 0)
-                    candidates.append((score, -curr_dps, -prio, w_name, a_name, w_cost, a_cost, pending_group))
+                    
+                    # pending_groups needs to combine w and a
+                    combined_pending = tuple(sorted(list(set(pending_groups + pending_a_groups))))
+                    
+                    candidates.append((score, -curr_dps, -prio, w_name, a_name, w_cost, a_cost, combined_pending))
             
             candidates.sort(key=lambda x: (round(x[0], 4), x[1], x[2]))
             selected = []
@@ -269,7 +267,7 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                 if len(selected) >= 2: break
                 if c[5] == 0 and c[6] == 0 and c not in selected: selected.append(c)
             
-            for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grp in selected:
+            for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grps_tuple in selected:
                 dps = -neg_dps
                 if dps <= 0: continue
                 
@@ -286,8 +284,11 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                 new_owned_a = frozenset(new_raw_a)
                 
                 new_unlocked_g = unlocked_g
-                if pending_grp is not None:
-                    raw_g = set(unlocked_g); raw_g.add(pending_grp); new_unlocked_g = frozenset(raw_g)
+                if pending_grps_tuple:
+                    raw_g = set(unlocked_g)
+                    for gid in pending_grps_tuple:
+                        raw_g.add(gid)
+                    new_unlocked_g = frozenset(raw_g)
                 
                 na, ns = (next_lvl if skill_train == 'Atk' else atk), (next_lvl if skill_train == 'Str' else stri)
                 new_h = h_table[na][ns]
@@ -320,12 +321,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     costs_map = {item.split(':')[0].strip().lower(): parse_time(item.split(':')[1]) for item in args.costs if ':' in item}
+    
+    # Parse Shared Costs into List of Groups
+    # shared_map: {item_name: [{'id': i, 'cost': cost}, ...]}
     shared_map = {}
     for i, item in enumerate(args.shared_costs):
         if ':' in item:
             names_str, time_str = item.split(':')
             cost = parse_time(time_str)
-            for n in names_str.split(','): shared_map[n.strip().lower()] = {'id': i, 'cost': cost}
+            for n in names_str.split(','):
+                n = n.strip().lower()
+                if n not in shared_map:
+                    shared_map[n] = []
+                shared_map[n].append({'id': i, 'cost': cost})
 
     # Resolve Goals
     g_atk = args.goal_atk if args.goal_atk else args.goal
@@ -341,6 +349,7 @@ if __name__ == "__main__":
         print("-" * 75)
         groups = []
         c_atk, c_str = args.start_atk, args.start_str
+        
         first_w, first_a = (path[0][3], path[0][4]) if path else ("None", "None")
         current_group = {'start_atk': c_atk, 'start_str': c_str, 'action': None, 'weapon': first_w, 'ammy': first_a, 'end_atk': c_atk, 'end_str': c_str, 'end_time': 0.0}
         for step in path:
@@ -348,6 +357,7 @@ if __name__ == "__main__":
             action = f"Train {skill}"
             if current_group['action'] is None: 
                 current_group['action'] = action; current_group['weapon'] = weapon_used; current_group['ammy'] = ammy_used
+            
             if (action != current_group['action']) or (weapon_used != current_group['weapon']) or (ammy_used != current_group['ammy']):
                 groups.append(current_group)
                 current_group = {'start_atk': c_atk, 'start_str': c_str, 'action': action, 'weapon': weapon_used, 'ammy': ammy_used, 'end_atk': c_atk, 'end_str': c_str, 'end_time': 0.0}
