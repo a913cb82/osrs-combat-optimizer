@@ -47,12 +47,20 @@ Costs can be specified in seconds (`30s`), minutes (`10m`), or hours (`1h`). Use
 ## Examples
 
 ### 1. The "Realistic" F2P Ironman (Meta)
-Optimizes for 99/99, assuming you can buy a **Rune Sword** (Champions' Guild, ~5h) but cannot reasonably smith a **Rune Scimitar** (~1300h) or **Adamant Scimitar** (~100h).
+Optimizes for 99/99, accounting for the massive grind to craft and enchant high-tier jewelry and weapons.
+
+*   **Rune Scimitar:** ~1300h (90 Smithing) -> Excluded.
+*   **Adamant Scimitar:** ~100h (75 Smithing) -> Excluded.
+*   **Amulet of Power:** ~110h (70 Crafting + 57 Magic) -> Likely skipped.
+*   **Amulet of Strength:** ~15h (50 Crafting + 49 Magic) -> Realistic goal.
+*   **Barronite Mace:** ~9h (Camdozaal RNG) -> Marginal upgrade.
+*   **Rune Sword:** ~5h (Champions' Guild) -> Primary weapon.
 
 ```bash
 python3 new_optimize_leveling.py \
   --goal 99 \
-  --costs "rune scimitar:999h" "adamant scimitar:100h" "rune sword:5h" "barronite mace:9h"
+  --costs "rune scimitar:1300h" "adamant scimitar:100h" "rune sword:5h" "barronite mace:9h" \
+          "power:110h" "str:15h" "accuracy:1h"
 ```
 
 ### 2. The "Rich" Main Account
