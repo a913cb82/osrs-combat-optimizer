@@ -1,39 +1,32 @@
 # Weapon Database Generator
 
-# --- Base Weapon Stats (Attack Speed & Relative Bonuses) ---
+# --- Base Weapon Stats (Attack Speed) ---
 # Speed: Seconds per attack (ticks * 0.6)
-# Bonuses are placeholders to be scaled by material tier.
-# Specific values will be mapped per OSRS Wiki standards.
 
 WEAPON_TYPES = {
-    "dagger":     {"speed": 2.4, "type_bonus": {"stab": 4, "slash": 2, "crush": -4}, "str_scale": 0.8},
-    "sword":      {"speed": 2.4, "type_bonus": {"stab": 4, "slash": 3, "crush": -2}, "str_scale": 1.0},
-    "scimitar":   {"speed": 2.4, "type_bonus": {"stab": 1, "slash": 7, "crush": -2}, "str_scale": 1.1}, # Scims have high str
-    "longsword":  {"speed": 3.0, "type_bonus": {"stab": 4, "slash": 5, "crush": -2}, "str_scale": 1.2},
-    "mace":       {"speed": 2.4, "type_bonus": {"stab": 1, "slash": -2, "crush": 6}, "str_scale": 0.9},
-    "battleaxe":  {"speed": 3.6, "type_bonus": {"stab": -2, "slash": 6, "crush": 3}, "str_scale": 1.6}, # High str, slow
-    "warhammer":  {"speed": 3.6, "type_bonus": {"stab": -4, "slash": -4, "crush": 10}, "str_scale": 1.6},
-    "2h sword":   {"speed": 4.2, "type_bonus": {"stab": -4, "slash": 9, "crush": 8}, "str_scale": 1.8},
+    "dagger":     {"speed": 2.4},
+    "sword":      {"speed": 2.4},
+    "scimitar":   {"speed": 2.4},
+    "longsword":  {"speed": 3.0},
+    "mace":       {"speed": 2.4},
+    "battleaxe":  {"speed": 3.6},
+    "warhammer":  {"speed": 3.6},
+    "2h sword":   {"speed": 4.2},
 }
 
-# --- Material Tiers (Level Req & Stat Multipliers) ---
-# These specific values are hardcoded to match OSRS exact stats for key weapons
-# rather than purely formulaic, to ensure accuracy for the optimizer.
-
+# --- Material Tiers (Level Req) ---
 MATERIALS = {
-    "bronze":   {"req": 1,  "offset": 0},
-    "iron":     {"req": 1,  "offset": 1}, # Approx +1-4 over bronze
-    "steel":    {"req": 5,  "offset": 2},
-    "black":    {"req": 10, "offset": 3},
-    "mithril":  {"req": 20, "offset": 4},
-    "adamant":  {"req": 30, "offset": 5},
-    "rune":     {"req": 40, "offset": 6},
+    "bronze":   {"req": 1},
+    "iron":     {"req": 1},
+    "steel":    {"req": 5},
+    "black":    {"req": 10},
+    "mithril":  {"req": 20},
+    "adamant":  {"req": 30},
+    "rune":     {"req": 40},
 }
 
 # --- Exact Stats Overrides (Source of Truth) ---
 # Format: "material weapon": (Stab, Slash, Crush, Str)
-# We fill the DB with these precise values.
-
 EXACT_STATS = {
     # Bronze
     "bronze dagger":     (4, 2, -4, 3),
@@ -106,29 +99,25 @@ EXACT_STATS = {
     "rune 2h sword":     (-4, 69, 50, 70),
     
     # Special
-    "barronite mace":    (0, 0, 40, 40), # Special stats
+    "barronite mace":    (0, 0, 40, 40),
 }
 
 # --- Database Generation ---
-
 WEAPON_DB = {}
 
 for name, stats in EXACT_STATS.items():
-    # Identify type and material from name
     parts = name.split()
-    # Handle "2h sword"
     if "2h" in name:
         w_type = "2h sword"
         material = parts[0]
     elif "barronite" in name:
-        w_type = "mace" # Treated as mace for speed
-        material = "rune" # Atk req 40
+        w_type = "mace"
+        material = "rune"
     else:
         w_type = parts[-1]
         material = parts[0]
         
-    # Get Metadata
-    type_data = WEAPON_TYPES.get(w_type, {"speed": 2.4}) # Default speed
+    type_data = WEAPON_TYPES.get(w_type, {"speed": 2.4})
     mat_data = MATERIALS.get(material, {"req": 1})
     if "barronite" in name: mat_data = {"req": 40}
     
@@ -141,5 +130,5 @@ for name, stats in EXACT_STATS.items():
         },
         "str": stats[3],
         "speed": type_data["speed"],
-        "cost": 30.0 # Default cost
+        "cost": 30.0
     }
