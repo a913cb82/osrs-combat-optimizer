@@ -58,16 +58,15 @@ Optimizes for 99/99, modeling the complex unlock requirements for top-tier gear.
 *   **Crafting:** 50 (Str Ammy) takes 15h. 70 (Power Ammy) takes another 95h (110h total).
 
 ```bash
-python3 optimize_melee.py \
-  --goal 99 \
-  --reqs "rune scimitar:1300h" "adamant scimitar:100h" "barronite mace:9h" "accuracy:1h" \
-         "guild:5h" \
-         "rune sword:30s:guild" \
-         "rune mace:30s:guild" \
-         "crafting_50:15h" \
-         "str:0s:crafting_50" \
-         "crafting_70:95h:crafting_50" \
-         "power:0s:crafting_70"
+python3 optimize_melee.py --goal 99 --reqs \
+    "75_smith:100h" "90_smith:1200h:75_smith" \
+    "50_craft:15h" "70_craft:95h:50_craft" \
+    "imp_catcher:1h" "champ_guild:5h" \
+    "adamant scimitar:30s:75_smith" "rune scimitar:30s:90_smith" \
+    "rune sword:30s:champ_guild" \
+    "rune mace:30s:champ_guild" \
+    "barronite mace:9h" \
+    "accuracy:0s:imp_catcher" "str:30s:50_craft" "power:30s:70_craft"
 ```
 
 ### 2. The "Rich" Main Account
