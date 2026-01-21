@@ -49,20 +49,22 @@ Costs can be specified in seconds (`30s`), minutes (`10m`), or hours (`1h`). Use
 ## Examples
 
 ### 1. The "Realistic" F2P Ironman (Meta)
-Optimizes for 99/99, accounting for the massive grind to craft and enchant high-tier jewelry and weapons.
+Optimizes for 99/99, accounting for the massive grind to craft jewelry and the quest requirements for rune gear.
 
-*   **Rune Scimitar:** ~1300h (90 Smithing) -> Excluded.
-*   **Adamant Scimitar:** ~100h (75 Smithing) -> Excluded.
-*   **Amulet of Power:** ~110h (70 Crafting + 57 Magic) -> Likely skipped.
-*   **Amulet of Strength:** ~15h (50 Crafting + 49 Magic) -> Realistic goal.
-*   **Barronite Mace:** ~9h (Camdozaal RNG) -> Marginal upgrade.
-*   **Rune Sword:** ~5h (Champions' Guild) -> Primary weapon.
+*   **Adamant Scimitar:** ~100h (75 Smithing)
+*   **Rune Scimitar:** ~1300h (90 Smithing)
+*   **Amulet of Accuracy:** ~1h (Imp Catcher)
+*   **Amulet of Power:** ~110h (70 Crafting + 57 Magic)
+*   **Amulet of Strength:** ~15h (50 Crafting + 49 Magic)
+*   **Barronite Mace:** ~9h (Camdozaal RNG)
+*   **Rune Sword & Mace:** ~5h (Champions' Guild)
 
 ```bash
 python3 optimize_melee.py \
   --goal 99 \
-  --costs "rune scimitar:1300h" "adamant scimitar:100h" "rune sword:5h" "barronite mace:9h" \
-          "power:110h" "str:15h" "accuracy:1h"
+  --costs "rune scimitar:1300h" "adamant scimitar:100h" "barronite mace:9h" \
+          "power:110h" "str:15h" "accuracy:1h" \
+  --shared_costs "rune sword,rune mace:5h"
 ```
 
 ### 2. The "Rich" Main Account
