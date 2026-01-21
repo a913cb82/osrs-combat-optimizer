@@ -71,20 +71,60 @@ def get_dps_raw(name, data, atk_lvl, str_lvl, style, amulet_stats):
         hc = calculate_hit_chance(atk_lvl, attack_bonus + amulet_stats['acc'], 0) 
     return (0.5 * mh * hc) / data['speed']
 
-def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, start_str=1, timeout=300, lookahead=100):
+# --- Requirement Graph Logic ---
+
+class ReqGraph:
+    def __init__(self):
+        self.nodes = {}
+        
+    def add_node(self, name, cost, parents=None):
+        self.nodes[name] = {'cost': cost, 'parents': parents or []}
+        
+    def get_unlock_cost(self, item_name, unlocked_set):
+        if item_name in unlocked_set:
+            return 0.0, []
+        
+        # If item is not in graph, it has 0 dependency cost
+        if item_name not in self.nodes:
+            return 0.0, []
+            
+        cost = 0.0
+        to_unlock = set()
+        queue = [item_name]
+        visited = set()
+        
+        while queue:
+            curr = queue.pop(0)
+            if curr in visited: continue
+            visited.add(curr)
+            
+            if curr not in unlocked_set:
+                to_unlock.add(curr)
+                node_data = self.nodes.get(curr)
+                if node_data:
+                    cost += node_data['cost']
+                    for p in node_data['parents']:
+                        queue.append(p)
+                        
+        return cost, sorted(list(to_unlock))
+
+def solve(req_graph, goal_atk, goal_str, start_atk=1, start_str=1, timeout=300, lookahead=100):
     start_time_real = time.time()
+    
+    # We use base costs from DB (usually 30s)
+    # Additional costs come from req_graph
     
     active_ammys = {}
     for name, data in AMULETS_DB.items():
         d = data.copy()
-        d['base_cost'] = costs_override.get(name, data['cost'])
+        d['base_cost'] = data['cost'] 
         active_ammys[name] = d
     if not active_ammys:
         active_ammys = {"none": {"str": 0, "acc": 0, "base_cost": 0.0}}
 
     allowed_data = {}
     for name, data in WEAPON_DB.items():
-        d = data.copy(); d['base_cost'] = costs_override.get(name, data['cost']); allowed_data[name] = d
+        d = data.copy(); d['base_cost'] = data['cost']; allowed_data[name] = d
 
     print("Pre-calculating tables...")
     combos = []
@@ -195,8 +235,8 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
     start_ammys = set()
     if 'none' in active_ammys: start_ammys.add('none')
     
-    # State: (atk, str, owned_w, owned_a, unlocked_groups)
-    pq = [(start_h, 0.0, start_atk, start_str, frozenset(), frozenset(start_ammys), frozenset(), [])] 
+    # State: (f, g, atk, str, owned_w, owned_a, tie_break, unlocked_groups, path)
+    pq = [(start_h, 0.0, start_atk, start_str, frozenset(), frozenset(start_ammys), 0, frozenset(), [])] 
     visited = {} 
     final_state = None
 
@@ -204,7 +244,7 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
     while pq:
         if time.time() - start_time_real > timeout:
             print(f"Timeout reached ({timeout}s)!"); return None
-        f, curr_time, atk, stri, owned_w, owned_a, unlocked_g, path = heapq.heappop(pq)
+        f, curr_time, atk, stri, owned_w, owned_a, _, unlocked_g, path = heapq.heappop(pq)
         
         state_key = (atk, stri, owned_w, owned_a, unlocked_g)
         if state_key in visited and visited[state_key] <= curr_time: continue
@@ -220,35 +260,33 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
             
             for w_name in avail_by_atk[atk]:
                 w_cost = 0.0
-                pending_groups = []
+                pending_w_nodes = []
                 
                 if w_name not in owned_w:
                     w_cost = allowed_data[w_name]['base_cost']
-                    groups = shared_costs_map.get(w_name, [])
-                    for grp in groups:
-                        if grp['id'] not in unlocked_g:
-                            w_cost += grp['cost']
-                            pending_groups.append(grp['id'])
+                    req_cost, req_nodes = req_graph.get_unlock_cost(w_name, unlocked_g)
+                    w_cost += req_cost
+                    pending_w_nodes = req_nodes
                 
                 for a_name in active_ammys:
                     a_cost = 0.0
-                    pending_a_groups = []
+                    pending_a_nodes = []
                     
                     if a_name not in owned_a:
                         a_cost = active_ammys[a_name]['base_cost']
-                        grps = shared_costs_map.get(a_name, [])
-                        for grp in grps:
-                            if grp['id'] not in unlocked_g:
-                                if grp['id'] not in pending_groups: 
-                                    a_cost += grp['cost']
-                                    pending_a_groups.append(grp['id'])
+                        
+                        eff_unlocked = set(unlocked_g)
+                        eff_unlocked.update(pending_w_nodes)
+                        
+                        a_req_cost, a_req_nodes = req_graph.get_unlock_cost(a_name, eff_unlocked)
+                        a_cost += a_req_cost
+                        pending_a_nodes = a_req_nodes
 
                     score = get_window_score_fast(w_name, a_name, style, atk, stri) + w_cost + a_cost
                     curr_dps = dps_cache[(w_name, a_name)][style][atk][stri]
                     
                     prio = AMULET_PRIORITY.get(a_name, 0)
-                    
-                    combined_pending = tuple(sorted(list(set(pending_groups + pending_a_groups))))
+                    combined_pending = tuple(sorted(list(set(pending_w_nodes + pending_a_nodes))))
                     
                     candidates.append((score, -curr_dps, -prio, w_name, a_name, w_cost, a_cost, combined_pending))
             
@@ -256,12 +294,9 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
             selected = []
             if candidates: selected.append(candidates[0])
             
-            # Pruning strategy
             for c in candidates:
                 if len(selected) >= 2: break
-                if c[5] == 0 and c[6] == 0 and c not in selected:
-                    selected.append(c)
-                    break
+                if c[5] == 0 and c[6] == 0 and c not in selected: selected.append(c)
             
             for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grps_tuple in selected:
                 dps = -neg_dps
@@ -282,17 +317,19 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                 new_unlocked_g = unlocked_g
                 if pending_grps_tuple:
                     raw_g = set(unlocked_g)
-                    for gid in pending_grps_tuple:
-                        raw_g.add(gid)
+                    raw_g.update(pending_grps_tuple)
                     new_unlocked_g = frozenset(raw_g)
                 
                 na, ns = (next_lvl if skill_train == 'Atk' else atk), (next_lvl if skill_train == 'Str' else stri)
                 new_h = h_table[na][ns]
                 new_f = new_g + new_h
                 
+                # Tie-breaker: Prefer higher priority items to avoid 'none' winning via string comparison
+                tie_break_prio = -(AMULET_PRIORITY.get(a_name, 0))
+                
                 new_key = (na, ns, new_owned_w, new_owned_a, new_unlocked_g)
                 if new_key not in visited or new_g < visited[new_key]:
-                    heapq.heappush(pq, (new_f, new_g, na, ns, new_owned_w, new_owned_a, new_unlocked_g,
+                    heapq.heappush(pq, (new_f, new_g, na, ns, new_owned_w, new_owned_a, tie_break_prio, new_unlocked_g,
                                         path + [(skill_train, next_lvl, new_g, w_name, a_name)]))
     return final_state
 
@@ -302,8 +339,7 @@ def format_time(seconds):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OSRS F2P Melee Optimizer")
-    parser.add_argument("--costs", nargs='+', default=[], help="List of costs (weapon:time or ammy:time)")
-    parser.add_argument("--shared_costs", nargs='+', default=[], help="Shared costs (item1,item2:time)")
+    parser.add_argument("--reqs", nargs='+', default=[], help="Dependency graph (node:cost:parent)")
     
     # Goals
     parser.add_argument("--goal", type=int, default=40, help="Default goal for both skills")
@@ -316,27 +352,23 @@ if __name__ == "__main__":
     parser.add_argument("--lookahead", type=int, default=100, help="Levels to look ahead")
     args = parser.parse_args()
     
-    costs_map = {item.split(':')[0].strip().lower(): parse_time(item.split(':')[1]) for item in args.costs if ':' in item}
-    
-    # Parse Shared Costs into List of Groups
-    # shared_map: {item_name: [{'id': i, 'cost': cost}, ...]}
-    shared_map = {}
-    for i, item in enumerate(args.shared_costs):
-        if ':' in item:
-            names_str, time_str = item.split(':')
-            cost = parse_time(time_str)
-            for n in names_str.split(','):
-                n = n.strip().lower()
-                if n not in shared_map:
-                    shared_map[n] = []
-                shared_map[n].append({'id': i, 'cost': cost})
+    # Build Graph
+    graph = ReqGraph()
+    for item in args.reqs:
+        parts = item.split(':')
+        name = parts[0].strip().lower()
+        cost = parse_time(parts[1])
+        parents = []
+        if len(parts) > 2 and parts[2].strip():
+            parents = [p.strip().lower() for p in parts[2].split(',')]
+        graph.add_node(name, cost, parents)
 
     # Resolve Goals
     g_atk = args.goal_atk if args.goal_atk else args.goal
     g_str = args.goal_str if args.goal_str else args.goal
 
     print(f"Optimizing for Goal: {g_atk}/{g_str}, Start: {args.start_atk}/{args.start_str}, Lookahead: {args.lookahead}")
-    result = solve(costs_map, shared_map, g_atk, g_str, args.start_atk, args.start_str, args.timeout, args.lookahead)
+    result = solve(graph, g_atk, g_str, args.start_atk, args.start_str, args.timeout, args.lookahead)
     
     if result:
         total_seconds, path = result

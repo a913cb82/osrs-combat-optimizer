@@ -39,35 +39,39 @@ python3 optimize_melee.py --help
 | `--goal_str` | Specific target for Strength level. | `None` (uses goal) |
 | `--start_atk` | Starting Attack level. | `1` |
 | `--start_str` | Starting Strength level. | `1` |
-| `--costs` | Custom acquisition costs for specific items (format `name:time`). | None (default 30s) |
+| `--reqs` | Dependency graph for items (format `node:cost:parents`). | None |
 | `--lookahead` | Number of levels to look ahead for value estimation. | `100` |
 | `--timeout` | Max execution time in seconds. | `300` |
 
 ### Time Formats
-Costs can be specified in seconds (`30s`), minutes (`10m`), or hours (`1h`). Use a high cost (e.g., `999h`) to effectively exclude an item.
+Costs can be specified in seconds (`30s`), minutes (`10m`), or hours (`1h`).
 
 ---
 
 ## Examples
 
-### 6. Nested Shared Costs (Skill Training)
-Models dependencies where one item is a "stepping stone" to another. Costs are **additive**.
+### 1. The "Realistic" F2P Ironman (Meta)
+Optimizes for 99/99, modeling the complex unlock requirements for top-tier gear.
 
-*   **Crafting 50 (Str Ammy):** 15h.
-*   **Crafting 70 (Power Ammy):** 110h total. This consists of the base 15h (Str Ammy) + 95h extra.
-*   Buying `str` pays the 15h group.
-*   Buying `power` later pays the 95h group (since 15h is already unlocked).
-*   Buying `power` immediately pays both groups (110h).
+*   **Rune Scimitar:** ~1300h (90 Smithing) -> Excluded via high cost.
+*   **Champions' Guild:** 5h Questing -> Unlocks Rune Sword & Mace.
+*   **Crafting:** 50 (Str Ammy) takes 15h. 70 (Power Ammy) takes another 95h (110h total).
 
 ```bash
 python3 optimize_melee.py \
   --goal 99 \
-  --costs "rune scimitar:1300h" \
-  --shared_costs "str,power:15h" "power:95h"
+  --reqs "rune scimitar:1300h" "adamant scimitar:100h" "barronite mace:9h" "accuracy:1h" \
+         "guild:5h" \
+         "rune sword:30s:guild" \
+         "rune mace:30s:guild" \
+         "crafting_50:15h" \
+         "str:0s:crafting_50" \
+         "crafting_70:95h:crafting_50" \
+         "power:0s:crafting_70"
 ```
 
 ### 2. The "Rich" Main Account
-Assumes you can buy any item instantly from the Grand Exchange (default cost ~30s). No cost overrides needed.
+Assumes you can buy any item instantly from the Grand Exchange (default cost ~30s). No special setup needed.
 
 ```bash
 python3 optimize_melee.py --goal 99
@@ -79,17 +83,17 @@ If you have a method to get a Rune Scimitar in **22 hours**, is it worth the gri
 ```bash
 python3 optimize_melee.py \
   --goal 99 \
-  --costs "rune scimitar:22h" "rune sword:5h"
+  --reqs "rune scimitar:22h" "rune sword:5h"
 ```
 *(Spoiler: Yes, it saves ~2 hours total. If it takes >24 hours, it's a net loss.)*
 
-### 5. Separate Skill Goals
-Optimizes for a specific build, like 40 Attack / 99 Strength (F2P Pure).
+### 4. Separate Skill Goals (Pures)
+Optimizes for a specific build, like 40 Attack / 99 Strength.
 
 ```bash
 python3 optimize_melee.py \
   --goal_atk 40 --goal_str 99 \
-  --costs "rune scimitar:22h"
+  --reqs "rune scimitar:22h"
 ```
 
 ---
