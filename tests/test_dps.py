@@ -1,24 +1,24 @@
 import unittest
-from new_optimize_leveling import get_dps_raw
-
-# Mock Data
-MOCK_RUNE_SCIM = {"bonus": {"stab": 7, "slash": 45, "crush": -2}, "max_bonus": 45, "str": 44, "speed": 2.4}
-MOCK_BRONZE_SCIM = {"bonus": {"stab": 1, "slash": 7, "crush": -2}, "max_bonus": 7, "str": 6, "speed": 2.4}
+from mechanics import calculate_dps, calculate_max_hit, calculate_hit_chance
 
 class TestDPS(unittest.TestCase):
-    def test_dps_comparison(self):
-        # Scenario: Level 40/40. 
-        # Rune Scimitar should have higher DPS than Bronze.
+    def test_dps_calculation(self):
+        # Scenario: Max Hit 10, Hit Chance 0.5, Speed 2.4s
+        # Avg Dmg = 0.5 * 10 * 0.5 = 2.5
+        # DPS = 2.5 / 2.4 = 1.0416...
         
-        atk = 40
-        str_lvl = 40
-        ammy = {"str": 0, "acc": 0}
+        dps = calculate_dps(10, 0.5, 2.4)
+        self.assertAlmostEqual(dps, 1.0416666, places=5)
+
+    def test_higher_stats_yield_higher_dps(self):
+        # Compare "Weak" vs "Strong" inputs
+        dps_weak = calculate_dps(10, 0.5, 2.4)
+        dps_strong = calculate_dps(20, 0.5, 2.4)
+        self.assertGreater(dps_strong, dps_weak)
         
-        dps_rune = get_dps_raw("rune scimitar", MOCK_RUNE_SCIM, atk, str_lvl, 'aggressive', ammy)
-        dps_bronze = get_dps_raw("bronze scimitar", MOCK_BRONZE_SCIM, atk, str_lvl, 'aggressive', ammy)
-        
-        self.assertGreater(dps_rune, dps_bronze)
-        self.assertGreater(dps_rune, 0)
+        dps_fast = calculate_dps(10, 0.5, 2.4)
+        dps_slow = calculate_dps(10, 0.5, 3.6)
+        self.assertGreater(dps_fast, dps_slow)
 
 if __name__ == '__main__':
     unittest.main()

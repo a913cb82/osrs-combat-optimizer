@@ -1,5 +1,5 @@
 import unittest
-from new_optimize_leveling import calculate_max_hit, calculate_hit_chance
+from mechanics import calculate_max_hit, calculate_hit_chance
 
 class TestCalculations(unittest.TestCase):
     def test_max_hit_rune_scimitar(self):
