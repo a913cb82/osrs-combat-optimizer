@@ -54,7 +54,7 @@ def get_dps_raw(name, data, atk_lvl, str_lvl, style, amulet_stats):
         hc = calculate_hit_chance(atk_lvl, attack_bonus + amulet_stats['acc'], 0) 
     return (0.5 * mh * hc) / data['speed']
 
-def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, lookahead=5):
+def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, lookahead=100):
     start_time_real = time.time()
     ammy_stats = {"str": 10 if amulet_name == "str" else (6 if amulet_name == "power" else 0), 
                   "acc": 6 if amulet_name == "power" else (4 if amulet_name == "accuracy" else 0)}
@@ -64,16 +64,54 @@ def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, l
         if any(a.lower() in name.lower() for a in allowed_weapons):
             d = data.copy(); d['base_cost'] = costs_override.get(name, data['cost']); allowed_data[name] = d
 
+    # 1. Pre-calculate DPS tables
     dps_table = {n: {'accurate': {}, 'aggressive': {}} for n in allowed_data}
-    window_table = {n: {'accurate': {}, 'aggressive': {}} for n in allowed_data}
-    
-    print("Pre-calculating tables...")
+    print("Pre-calculating DPS tables...")
     for n, data in allowed_data.items():
         for style in ['accurate', 'aggressive']:
             for a in range(1, 101):
                 dps_table[n][style][a] = {}
                 for s in range(1, 101):
                     dps_table[n][style][a][s] = get_dps_raw(n, data, a, s, style, ammy_stats)
+
+    # 2. Pre-calculate A* Heuristic (h_table)
+    # Admissible heuristic: Time to reach goal using the best weapon available in game (ignoring costs)
+    print("Pre-calculating A* heuristic...")
+    best_dps_at_level = {'accurate': {}, 'aggressive': {}}
+    for style in ['accurate', 'aggressive']:
+        for a in range(1, 101):
+            best_dps_at_level[style][a] = {}
+            for s in range(1, 101):
+                best_dps = 0.0
+                for n, data in allowed_data.items():
+                    if a >= data['atk_req']:
+                        best_dps = max(best_dps, dps_table[n][style][a][s])
+                best_dps_at_level[style][a][s] = best_dps
+
+    # Compute h_table[atk][str] using Dynamic Programming (backwards from Goal)
+    # h(a, s) = min( h(a+1, s) + cost(a->a+1), h(a, s+1) + cost(s->s+1) )
+    h_table = {}
+    for a in range(goal_lvl, 0, -1):
+        h_table[a] = {}
+        for s in range(goal_lvl, 0, -1):
+            if a == goal_lvl and s == goal_lvl:
+                h_table[a][s] = 0.0
+            else:
+                opt_atk = float('inf')
+                opt_str = float('inf')
+                if a < goal_lvl:
+                    d = best_dps_at_level['accurate'][a][s]
+                    cost_step = (XP_TABLE[a+1] - XP_TABLE[a]) / (4.0 * d) if d > 0 else float('inf')
+                    opt_atk = cost_step + h_table[a+1][s]
+                if s < goal_lvl:
+                    d = best_dps_at_level['aggressive'][a][s]
+                    cost_step = (XP_TABLE[s+1] - XP_TABLE[s]) / (4.0 * d) if d > 0 else float('inf')
+                    opt_str = cost_step + h_table[a][s+1]
+                h_table[a][s] = min(opt_atk, opt_str)
+
+    # 3. Pre-calculate Lookahead Window Scores (for candidate selection)
+    window_table = {n: {'accurate': {}, 'aggressive': {}} for n in allowed_data}
+    print("Pre-calculating Lookahead windows...")
     for n, data in allowed_data.items():
         for style in ['accurate', 'aggressive']:
             for a in range(1, 101):
@@ -81,16 +119,20 @@ def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, l
                 for s in range(1, 101):
                     total_win_time = 0.0
                     for i in range(max(1, lookahead)):
-                        ca, cs = min(100, a + i if style == 'accurate' else a), min(100, s + i if style == 'aggressive' else s)
+                        ca, cs = (min(goal_lvl, a + i) if style == 'accurate' else a), (min(goal_lvl, s + i) if style == 'aggressive' else s)
                         cl = ca if style == 'accurate' else cs
-                        if cl >= 100: break
+                        if cl >= goal_lvl: break
                         d = dps_table[n][style][ca][cs]
                         if d <= 0: total_win_time = float('inf'); break
                         total_win_time += (XP_TABLE[cl+1] - XP_TABLE[cl]) / (4.0 * d)
                     window_table[n][style][a][s] = total_win_time
 
     avail_by_atk = {lvl: [n for n, d in allowed_data.items() if lvl >= d['atk_req']] for lvl in range(1, 101)}
-    pq = [(0.0, 1, 1, frozenset(), [])] 
+    
+    # PQ: (f_score, g_score, atk, str, owned_set, path)
+    # f_score = g_score + h_score
+    start_h = h_table[1][1]
+    pq = [(start_h, 0.0, 1, 1, frozenset(), [])] 
     visited = {} 
     final_state = None
 
@@ -98,16 +140,19 @@ def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, l
     while pq:
         if time.time() - start_time_real > timeout:
             print(f"Timeout reached ({timeout}s)!"); return None
-        curr_time, atk, stri, owned, path = heapq.heappop(pq)
+        f_score, curr_time, atk, stri, owned, path = heapq.heappop(pq)
+        
         state_key = (atk, stri, owned)
-        if state_key in visited and visited[state_key] < curr_time: continue
+        if state_key in visited and visited[state_key] <= curr_time: continue
         visited[state_key] = curr_time
+        
         if atk == goal_lvl and stri == goal_lvl:
             final_state = (curr_time, path); break
             
         for skill_train in ['Atk', 'Str']:
             if (skill_train == 'Atk' and atk >= goal_lvl) or (skill_train == 'Str' and stri >= goal_lvl): continue
             style = 'accurate' if skill_train == 'Atk' else 'aggressive'
+            
             best_owned, best_unowned = None, None
             for n in avail_by_atk[atk]:
                 dps = dps_table[n][style][atk][stri]
@@ -127,29 +172,32 @@ def solve(allowed_weapons, costs_override, amulet_name, goal_lvl, timeout=300, l
                 cost = 0.0 if name in owned else allowed_data[name]['base_cost']
                 next_lvl = (atk + 1) if skill_train == 'Atk' else (stri + 1)
                 xp_needed = XP_TABLE[next_lvl] - XP_TABLE[atk if skill_train == 'Atk' else stri]
-                new_total_time = curr_time + (xp_needed / (4.0 * dps)) + cost
                 
-                # PRUNING: Only keep weapons that are best for either style among owned
+                new_g = curr_time + (xp_needed / (4.0 * dps)) + cost
+                
+                # Inline pruning for owned set
                 raw_owned = set(owned); raw_owned.add(name)
                 na, ns = (next_lvl if skill_train == 'Atk' else atk), (next_lvl if skill_train == 'Str' else stri)
                 
-                # Fast inline pruning
                 kept = set()
-                best_atk_dps, best_str_dps = -1.0, -1.0
-                best_atk_name, best_str_name = None, None
+                b_atk_d, b_str_d = -1.0, -1.0
+                b_atk_n, b_str_n = None, None
                 for o_name in raw_owned:
                     d_a = dps_table[o_name]['accurate'][na][ns]
                     d_s = dps_table[o_name]['aggressive'][na][ns]
-                    if d_a > best_atk_dps: best_atk_dps = d_a; best_atk_name = o_name
-                    if d_s > best_str_dps: best_str_dps = d_s; best_str_name = o_name
-                if best_atk_name: kept.add(best_atk_name)
-                if best_str_name: kept.add(best_str_name)
+                    if d_a > b_atk_d: b_atk_d = d_a; b_atk_n = o_name
+                    if d_s > b_str_d: b_str_d = d_s; b_str_n = o_name
+                if b_atk_n: kept.add(b_atk_n)
+                if b_str_n: kept.add(b_str_n)
                 new_owned = frozenset(kept)
                 
+                new_h = h_table[na][ns]
+                new_f = new_g + new_h
+                
                 new_key = (na, ns, new_owned)
-                if new_key not in visited or new_total_time < visited[new_key]:
-                    visited[new_key] = new_total_time
-                    heapq.heappush(pq, (new_total_time, na, ns, new_owned, path + [(skill_train, next_lvl, new_total_time, name)]))
+                if new_key not in visited or new_g < visited[new_key]:
+                    # Using g_score for visited check is standard for A*
+                    heapq.heappush(pq, (new_f, new_g, na, ns, new_owned, path + [(skill_train, next_lvl, new_g, name)]))
     return final_state
 
 def format_time(seconds):
@@ -163,7 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("--amulet", choices=["none", "str", "power", "accuracy"], default="str", help="Amulet choice")
     parser.add_argument("--goal", type=int, default=40, help="Target level")
     parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
-    parser.add_argument("--lookahead", type=int, default=5, help="Levels to look ahead")
+    parser.add_argument("--lookahead", type=int, default=100, help="Levels to look ahead")
     args = parser.parse_args()
     costs_map = {item.split(':')[0].strip().lower(): parse_time(item.split(':')[1]) for item in args.costs if ':' in item}
     print(f"Optimizing for Goal: {args.goal}/{args.goal}, Weapons: {args.weapons}, Amulet: {args.amulet}, Lookahead: {args.lookahead}")
