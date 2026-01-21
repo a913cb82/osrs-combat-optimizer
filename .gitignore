@@ -1,0 +1,10 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.venv/
+
+# OS files
+.DS_Store
