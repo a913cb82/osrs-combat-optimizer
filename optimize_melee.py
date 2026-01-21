@@ -13,6 +13,13 @@ AMULETS_DB = {
     "none":     {"str": 0,  "acc": 0, "cost": 0.0},
 }
 
+AMULET_PRIORITY = {
+    "str": 3,
+    "power": 2,
+    "accuracy": 1,
+    "none": 0
+}
+
 def get_xp_for_level(level):
     total = 0
     for l in range(1, level):
@@ -66,43 +73,6 @@ def get_dps_raw(name, data, atk_lvl, str_lvl, style, amulet_stats):
 
 def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, timeout=300, lookahead=100):
     start_time_real = time.time()
-    
-    # Process Shared Costs
-    # shared_costs_map: {'group_id': cost}
-    # item_groups: {'item_name': 'group_id'}
-    item_groups = {}
-    group_costs = {}
-    
-    # Parse the input map (which is group_id -> (items, cost)) from args?
-    # No, args are parsed before. We expect shared_costs_map structure:
-    # We need to map Items to Groups.
-    # The helper `parse_shared_costs` below handles this structure.
-    # Input `shared_costs_map` here is just the raw dict from args?
-    # Let's clarify the signature. `shared_costs_map` is {group_key: cost}.
-    # We need a separate map for items.
-    
-    # Actually, let's process the raw args inside main and pass clean structures here.
-    # Let's assume `item_groups` (item->group_id) and `group_costs` (group_id->cost) are passed or processed.
-    # To keep signature clean, let's parse inside solve or main.
-    # I'll update main to parse.
-    pass 
-
-    # Re-structure for solve:
-    # args.shared_costs is list of strings "item,item:cost"
-    # We parse this into:
-    # item_to_group: {"rune sword": 0, "rune mace": 0}
-    # group_costs: {0: 18000.0}
-    
-    item_to_group = {}
-    group_costs_dict = {}
-    
-    # Use the passed map which we will assume is {frozenset(items): cost}
-    # Actually, simpler to pass the raw list and parse here?
-    # No, cleaner to pass parsed data.
-    # Let's modify solve signature:
-    # solve(..., item_to_group, group_costs, ...)
-    
-    # Placeholder for the updated signature logic down below
     
     active_ammys = {}
     for name, data in AMULETS_DB.items():
@@ -223,7 +193,6 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
     start_ammys = set()
     if 'none' in active_ammys: start_ammys.add('none')
     
-    # State: (atk, str, owned_w, owned_a, unlocked_groups)
     pq = [(start_h, 0.0, start_atk, start_str, frozenset(), frozenset(start_ammys), frozenset(), [])] 
     visited = {} 
     final_state = None
@@ -247,13 +216,10 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
             candidates = []
             
             for w_name in avail_by_atk[atk]:
-                # Calculate Weapon Cost (Base + Shared)
                 w_cost = 0.0
                 pending_group = None
-                
                 if w_name not in owned_w:
                     w_cost = allowed_data[w_name]['base_cost']
-                    # Add shared cost if applicable
                     grp = shared_costs_map.get(w_name)
                     if grp and grp['id'] not in unlocked_g:
                         w_cost += grp['cost']
@@ -262,18 +228,27 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
                 for a_name in active_ammys:
                     a_cost = 0.0 if a_name in owned_a else active_ammys[a_name]['base_cost']
                     score = get_window_score_fast(w_name, a_name, style, atk, stri) + w_cost + a_cost
-                    candidates.append((score, w_name, a_name, w_cost, a_cost, pending_group))
+                    curr_dps = dps_cache[(w_name, a_name)][style][atk][stri]
+                    
+                    prio = AMULET_PRIORITY.get(a_name, 0)
+                    candidates.append((score, -curr_dps, -prio, w_name, a_name, w_cost, a_cost, pending_group))
             
-            candidates.sort(key=lambda x: x[0])
+            candidates.sort(key=lambda x: (round(x[0], 4), x[1], x[2]))
             selected = []
             if candidates: selected.append(candidates[0])
             
-            for c in candidates:
-                if len(selected) >= 2: break
-                if c[3] == 0 and c[4] == 0 and c not in selected: selected.append(c)
+            # Pruning strategy:
+            # Only add a backup "Zero Cost" option if the best option HAS a cost.
+            # indices: 5=w_cost, 6=a_cost.
+            if candidates[0][5] > 0 or candidates[0][6] > 0:
+                for c in candidates:
+                    if len(selected) >= 2: break
+                    if c[5] == 0 and c[6] == 0 and c not in selected:
+                        selected.append(c)
+                        break
             
-            for score, w_name, a_name, w_cost, a_cost, pending_grp in selected:
-                dps = dps_cache[(w_name, a_name)][style][atk][stri]
+            for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grp in selected:
+                dps = -neg_dps
                 if dps <= 0: continue
                 
                 next_lvl = (atk + 1) if skill_train == 'Atk' else (stri + 1)
@@ -288,12 +263,9 @@ def solve(costs_override, shared_costs_map, goal_lvl, start_atk=1, start_str=1, 
                 new_owned_w = frozenset(new_raw_w)
                 new_owned_a = frozenset(new_raw_a)
                 
-                # Update unlocked groups
                 new_unlocked_g = unlocked_g
                 if pending_grp is not None:
-                    raw_g = set(unlocked_g)
-                    raw_g.add(pending_grp)
-                    new_unlocked_g = frozenset(raw_g)
+                    raw_g = set(unlocked_g); raw_g.add(pending_grp); new_unlocked_g = frozenset(raw_g)
                 
                 na, ns = (next_lvl if skill_train == 'Atk' else atk), (next_lvl if skill_train == 'Str' else stri)
                 new_h = h_table[na][ns]
@@ -321,17 +293,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     costs_map = {item.split(':')[0].strip().lower(): parse_time(item.split(':')[1]) for item in args.costs if ':' in item}
-    
-    # Parse Shared Costs
-    # Structure: {'rune sword': {'id': 0, 'cost': 18000}, 'rune mace': {'id': 0, 'cost': 18000}}
     shared_map = {}
     for i, item in enumerate(args.shared_costs):
         if ':' in item:
             names_str, time_str = item.split(':')
             cost = parse_time(time_str)
-            names = [n.strip().lower() for n in names_str.split(',')]
-            for n in names:
-                shared_map[n] = {'id': i, 'cost': cost}
+            for n in names_str.split(','): shared_map[n.strip().lower()] = {'id': i, 'cost': cost}
 
     print(f"Optimizing for Goal: {args.goal}/{args.goal}, Start: {args.start_atk}/{args.start_str}, Lookahead: {args.lookahead}")
     result = solve(costs_map, shared_map, args.goal, args.start_atk, args.start_str, args.timeout, args.lookahead)
@@ -343,7 +310,6 @@ if __name__ == "__main__":
         print("-" * 75)
         groups = []
         c_atk, c_str = args.start_atk, args.start_str
-        
         first_w, first_a = (path[0][3], path[0][4]) if path else ("None", "None")
         current_group = {'start_atk': c_atk, 'start_str': c_str, 'action': None, 'weapon': first_w, 'ammy': first_a, 'end_atk': c_atk, 'end_str': c_str, 'end_time': 0.0}
         for step in path:
@@ -351,7 +317,6 @@ if __name__ == "__main__":
             action = f"Train {skill}"
             if current_group['action'] is None: 
                 current_group['action'] = action; current_group['weapon'] = weapon_used; current_group['ammy'] = ammy_used
-            
             if (action != current_group['action']) or (weapon_used != current_group['weapon']) or (ammy_used != current_group['ammy']):
                 groups.append(current_group)
                 current_group = {'start_atk': c_atk, 'start_str': c_str, 'action': action, 'weapon': weapon_used, 'ammy': ammy_used, 'end_atk': c_atk, 'end_str': c_str, 'end_time': 0.0}
