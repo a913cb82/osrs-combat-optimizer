@@ -195,6 +195,7 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
     start_ammys = set()
     if 'none' in active_ammys: start_ammys.add('none')
     
+    # State: (atk, str, owned_w, owned_a, unlocked_groups)
     pq = [(start_h, 0.0, start_atk, start_str, frozenset(), frozenset(start_ammys), frozenset(), [])] 
     visited = {} 
     final_state = None
@@ -223,29 +224,22 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                 
                 if w_name not in owned_w:
                     w_cost = allowed_data[w_name]['base_cost']
-                    
-                    # Check ALL shared groups for this weapon
                     groups = shared_costs_map.get(w_name, [])
                     for grp in groups:
                         if grp['id'] not in unlocked_g:
                             w_cost += grp['cost']
                             pending_groups.append(grp['id'])
                 
-                # Amulet Logic
                 for a_name in active_ammys:
                     a_cost = 0.0
                     pending_a_groups = []
                     
                     if a_name not in owned_a:
                         a_cost = active_ammys[a_name]['base_cost']
-                        # Check shared groups for amulet (if we tracked them, currently we don't pass ammys to shared_map)
-                        # We could easily enable it by checking shared_map.get(a_name)
                         grps = shared_costs_map.get(a_name, [])
                         for grp in grps:
                             if grp['id'] not in unlocked_g:
-                                # Avoid double counting if weapon unlocks same group?
-                                # If pending_groups already has it, we shouldn't add cost again.
-                                if grp['id'] not in pending_groups:
+                                if grp['id'] not in pending_groups: 
                                     a_cost += grp['cost']
                                     pending_a_groups.append(grp['id'])
 
@@ -254,7 +248,6 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
                     
                     prio = AMULET_PRIORITY.get(a_name, 0)
                     
-                    # pending_groups needs to combine w and a
                     combined_pending = tuple(sorted(list(set(pending_groups + pending_a_groups))))
                     
                     candidates.append((score, -curr_dps, -prio, w_name, a_name, w_cost, a_cost, combined_pending))
@@ -263,9 +256,12 @@ def solve(costs_override, shared_costs_map, goal_atk, goal_str, start_atk=1, sta
             selected = []
             if candidates: selected.append(candidates[0])
             
+            # Pruning strategy
             for c in candidates:
                 if len(selected) >= 2: break
-                if c[5] == 0 and c[6] == 0 and c not in selected: selected.append(c)
+                if c[5] == 0 and c[6] == 0 and c not in selected:
+                    selected.append(c)
+                    break
             
             for score, neg_dps, neg_prio, w_name, a_name, w_cost, a_cost, pending_grps_tuple in selected:
                 dps = -neg_dps

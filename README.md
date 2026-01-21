@@ -50,21 +50,20 @@ Costs can be specified in seconds (`30s`), minutes (`10m`), or hours (`1h`). Use
 
 ## Examples
 
-### 1. The "Realistic" F2P Ironman (Meta)
-Optimizes for 99/99, accounting for the massive grind to craft jewelry and the quest requirements for rune gear. Uses **nested shared costs** to model how the 15h Strength Amulet grind contributes toward the 110h Power Amulet total.
+### 6. Nested Shared Costs (Skill Training)
+Models dependencies where one item is a "stepping stone" to another. Costs are **additive**.
 
-*   **Rune Scimitar:** ~1300h (90 Smithing)
-*   **Champions' Guild:** ~5h (Unlocks both **Rune Sword** and **Rune Mace**)
 *   **Crafting 50 (Str Ammy):** 15h.
-*   **Crafting 70 (Power Ammy):** An *additional* 95h (110h total).
+*   **Crafting 70 (Power Ammy):** 110h total. This consists of the base 15h (Str Ammy) + 95h extra.
+*   Buying `str` pays the 15h group.
+*   Buying `power` later pays the 95h group (since 15h is already unlocked).
+*   Buying `power` immediately pays both groups (110h).
 
 ```bash
 python3 optimize_melee.py \
   --goal 99 \
-  --costs "rune scimitar:1300h" "adamant scimitar:100h" "barronite mace:9h" "accuracy:1h" \
-  --shared_costs "rune sword,rune mace:5h" \
-                 "str,power:15h" \
-                 "power:95h" # Power Ammy Total = 15h (Shared) + 95h (Unique) = 110h
+  --costs "rune scimitar:1300h" \
+  --shared_costs "str,power:15h" "power:95h"
 ```
 
 ### 2. The "Rich" Main Account
