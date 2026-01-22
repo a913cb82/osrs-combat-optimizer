@@ -9,25 +9,26 @@ A high-fidelity optimization tool for Old School RuneScape (F2P) melee training.
 
 ## Installation
 
-Requires Python 3.6+.
+Requires Python 3.9+.
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd osrs_dps
 
-# No external dependencies required!
+# Install in editable mode
+pip install -e .
 ```
 
 ## Usage
 
-Run the optimizer using `python3 optimize_melee.py`.
+Run the optimizer using `PYTHONPATH=src python3 -m osrs_dps`.
 
-The tool automatically considers **all** F2P weapons and amulets. To exclude an item (or make it "expensive" to acquire), use the `--costs` argument.
+The tool automatically considers **all** F2P weapons and amulets. To exclude an item (or make it "expensive" to acquire), use the `--reqs` argument to define its acquisition cost.
 
 For a full list of available arguments and their defaults, run:
 ```bash
-python3 optimize_melee.py --help
+PYTHONPATH=src python3 -m osrs_dps --help
 ```
 
 ### Key Arguments
@@ -58,7 +59,7 @@ Optimizes for 99/99, modeling the complex unlock requirements for top-tier gear.
 *   **Crafting:** 50 (Str Ammy) takes 15h. 70 (Power Ammy) takes another 95h (110h total).
 
 ```bash
-python3 optimize_melee.py --goal 99 --reqs \
+PYTHONPATH=src python3 -m osrs_dps --goal 99 --reqs \
     "75_smith:100h" "90_smith:1200h:75_smith" \
     "50_craft:15h" "70_craft:95h:50_craft" \
     "imp_catcher:1h" "champ_guild:5h" \
@@ -73,14 +74,14 @@ python3 optimize_melee.py --goal 99 --reqs \
 Assumes you can buy any item instantly from the Grand Exchange (default cost ~30s). No special setup needed.
 
 ```bash
-python3 optimize_melee.py --goal 99
+PYTHONPATH=src python3 -m osrs_dps --goal 99
 ```
 
 ### 3. Is the Rune Scimitar Worth It?
 If you have a method to get a Rune Scimitar in **22 hours**, is it worth the grind over just using a Rune Sword?
 
 ```bash
-python3 optimize_melee.py \
+PYTHONPATH=src python3 -m osrs_dps \
   --goal 99 \
   --reqs "rune scimitar:22h" "rune sword:5h"
 ```
@@ -90,12 +91,27 @@ python3 optimize_melee.py \
 Optimizes for a specific build, like 40 Attack / 99 Strength.
 
 ```bash
-python3 optimize_melee.py \
+PYTHONPATH=src python3 -m osrs_dps \
   --goal_atk 40 --goal_str 99 \
   --reqs "rune scimitar:22h"
 ```
 
 ---
+
+## Development
+
+The project uses `ruff` for linting, `mypy` for type checking, and `pytest` for testing.
+
+```bash
+# Linting
+ruff check .
+
+# Type Checking
+mypy .
+
+# Testing
+pytest
+```
 
 ## How It Works
 
