@@ -1,10 +1,13 @@
-# Python artifacts
-__pycache__/
-*.py[cod]
-*$py.class
 
 # Environment
-.venv/
-
 # OS files
+# Python artifacts
+*$py.class
+*.py[cod]
 .DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+requirements.snapshot.txt
